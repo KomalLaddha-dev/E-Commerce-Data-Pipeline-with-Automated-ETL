@@ -1,6 +1,27 @@
 # E-commerce Data Pipeline with Automated ETL
 
-A complete, production-grade data pipeline that extracts transactional data from an e-commerce platform, transforms it into analytics-ready formats, and loads it into a star-schema data warehouse — all orchestrated by Apache Airflow.
+<div align="center">
+
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791)](https://www.postgresql.org)
+[![Apache Airflow](https://img.shields.io/badge/Apache%20Airflow-2.7%2B-017cee)](https://airflow.apache.org)
+[![Docker](https://img.shields.io/badge/Docker-%23.svg?logo=docker)](https://www.docker.com)
+[![License](https://img.shields.io/badge/License-MIT-green)](#license)
+
+</div>
+
+A complete, **production-grade data pipeline** that extracts transactional data from an e-commerce platform, transforms it into analytics-ready formats, and loads it into a **star-schema data warehouse** — all orchestrated by Apache Airflow.
+
+### ✨ Key Features
+
+- 🔄 **Automated ETL Pipeline** — Extract, Transform, Load workflows with error handling
+- 📊 **Star Schema Warehouse** — Optimized for OLAP analytics queries
+- ✅ **Data Quality Checks** — Automated validation of loaded data
+- 📅 **Airflow Orchestration** — Schedule, retry, and monitor pipeline runs
+- 📈 **Real-time Dashboards** — Streamlit integration for analytics
+- 🐳 **Docker Ready** — Complete containerized setup with PostgreSQL
+- 🧪 **Comprehensive Tests** — Unit tests for all pipeline stages
+- 📚 **Well Documented** — Detailed SQL schemas and queries included
 
 ---
 
@@ -61,107 +82,167 @@ ETL Automation/
 
 ## Quick Start
 
-### Option A: Docker (Recommended — No Database Installation Required)
+### 🚀 Option A: Docker (Recommended)
+
+No database installation required! The complete stack runs in Docker containers.
 
 ```bash
-# 1. Start PostgreSQL and run the full ETL pipeline
+# 1. Clone the repository
+git clone <your-repo-url>
+cd ETL\ Automation
+
+# 2. Create environment file (copy from template)
+cp .env.example .env
+
+# 3. Build and start all services
 docker compose up --build
 
-# 2. (Optional) Connect to the warehouse to run analytics queries
+# This will:
+# ✓ Start PostgreSQL 15 (source DB + data warehouse)
+# ✓ Run the full ETL pipeline
+# ✓ Start the Streamlit dashboard (http://localhost:8501)
+```
+
+**After the pipeline completes:**
+
+```bash
+# Optional: Connect to PostgreSQL to run queries
 docker exec -it etl_postgres psql -U etl_user -d ecommerce_dw
 
-# 3. Stop and clean up
+# Stop all services
 docker compose down -v
 ```
 
-The Docker setup automatically:
-- Starts PostgreSQL 15 with source + warehouse databases
-- Seeds the source database with sample e-commerce data
-- Runs Extract → Transform → Load pipeline end-to-end
-- Data persists in `data/` and `logs/` directories locally
+### 📦 Option B: Local Installation
 
-### Option B: Manual Setup (Requires MySQL/PostgreSQL Installed)
+Requires PostgreSQL/MySQL already installed on your system.
 
-#### 1. Prerequisites
+#### Prerequisites
 
-- Python 3.9+
-- MySQL or PostgreSQL database
-- Apache Airflow 2.7+ (for orchestration)
-- Docker Desktop (for containerized setup)
+```
+✓ Python 3.9 or higher
+✓ PostgreSQL 12+ or MySQL 8+
+✓ pip (Python package manager)
+✓ Git
+```
 
-### 2. Install Dependencies
+#### Installation Steps
 
 ```bash
+# 1. Clone repository
+git clone <your-repo-url>
+cd ETL\ Automation
+
+# 2. Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
-```
 
-### 3. Configure Databases
+# 4. Configure environment
+cp .env.example .env
+# Edit .env with your database credentials
 
-Edit `config/database.yaml` with your database credentials, or set environment variables:
+# 5. Create databases
+mysql -u root -p < warehouse_schema/source_schema.sql
+psql -U postgres -f warehouse_schema/warehouse_schema.sql
 
-```bash
-export SOURCE_DB_HOST=localhost
-export SOURCE_DB_PORT=3306
-export SOURCE_DB_USER=root
-export SOURCE_DB_PASSWORD=your_password
-export SOURCE_DB_NAME=ecommerce_db
-
-export DW_HOST=localhost
-export DW_PORT=5432
-export DW_USER=warehouse_user
-export DW_PASSWORD=warehouse_pass
-export DW_NAME=ecommerce_dw
-```
-
-### 4. Create Source Database
-
-```bash
-mysql -u root -p ecommerce_db < warehouse_schema/source_schema.sql
-```
-
-### 5. Create Data Warehouse
-
-```bash
-psql -U warehouse_user -d ecommerce_dw -f warehouse_schema/warehouse_schema.sql
-```
-
-### 6. Run the Pipeline
-
-```bash
-# Full pipeline (extract → transform → load)
+# 6. Run the pipeline
 python scripts/etl_pipeline.py
-
-# Individual steps
-python scripts/etl_pipeline.py --step extract
-python scripts/etl_pipeline.py --step transform
-python scripts/etl_pipeline.py --step load
 ```
 
-### 7. Run Tests
+### 🔄 Option C: Apache Airflow Setup
+
+For production scheduling and monitoring:
 
 ```bash
-# All tests
-python -m pytest tests/ -v
+# 1. Install Airflow (separate from main requirements)
+pip install apache-airflow[postgres]==2.7.0
 
-# Specific test suite
-python -m pytest tests/test_transform.py -v
-python -m pytest tests/test_quality.py -v
-```
+# 2. Copy DAG to Airflow
+export AIRFLOW_HOME=~/airflow
+mkdir -p $AIRFLOW_HOME/dags
+cp airflow_dags/ecommerce_etl_dag.py $AIRFLOW_HOME/dags/
 
-### 8. Set Up Airflow (Optional)
+# 3. Initialize Airflow database
+airflow db init
 
-```bash
-# Copy DAG to Airflow
-cp airflow_dags/ecommerce_etl_dag.py ~/airflow/dags/
+# 4. Create admin user
+airflow users create \
+  --username admin \
+  --firstname Admin \
+  --lastname User \
+  --role Admin \
+  --email admin@example.com
 
-# Start Airflow
+# 5. Start Airflow scheduler and webserver
 airflow webserver --port 8080 &
 airflow scheduler &
+
+# 6. Access at http://localhost:8080
 ```
 
-The DAG runs daily at 02:00 UTC with 3 retries on failure.
+## 🧪 Running Tests
 
-## Data Warehouse — Star Schema
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test module
+pytest tests/test_extract.py -v
+pytest tests/test_transform.py -v
+pytest tests/test_quality.py -v
+
+# Run with coverage report
+pytest tests/ --cov=scripts --cov-report=html
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+Create a `.env` file from the template:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your actual values:
+
+```bash
+# Database credentials
+SOURCE_DB_PASSWORD=your_source_password
+DW_PASSWORD=your_warehouse_password
+DW_HOST=localhost
+
+# Optional: Airflow settings
+AIRFLOW__CORE__DAGS_FOLDER=./airflow_dags
+AIRFLOW__CORE__MAX_ACTIVE_RUNS=1
+```
+
+### Pipeline Configuration
+
+Edit `config/pipeline_config.yaml` to customize:
+
+- **Extraction:** Batch sizes, incremental vs. full reload strategies
+- **Transformation:** Customer segments, currency, date formats
+- **Loading:** Dimension reload strategies, fact table upsert logic
+- **Quality Checks:** Data validation thresholds
+
+Edit `config/database.yaml` for database driver selection.
+
+## 📊 Pipeline Execution
+
+### Run Complete Pipeline
+
+```bash
+python scripts/etl_pipeline.py
+```
+
+## 📚 Data Warehouse Schema
+
+### Star Schema Tables
 
 | Table | Type | Description |
 |-------|------|-------------|
@@ -171,47 +252,170 @@ The DAG runs daily at 02:00 UTC with 3 retries on failure.
 | `date_dim` | Dimension | Calendar table (2024-2026) with day/month/quarter attributes |
 | `payment_dim` | Dimension | Payment methods and transaction statuses |
 
-## Analytics Queries
+### Pre-built Analytics Queries
 
 The `warehouse_schema/analytics_queries.sql` file includes 12 production-ready queries:
 
-1. Total sales per day
-2. Best selling products (top 10)
+1. Daily sales summary
+2. Top 10 best selling products
 3. Customer lifetime value (top 20)
-4. Monthly revenue trend with MoM growth
-5. Payment method analysis
+4. Monthly revenue trend with growth rates
+5. Payment method distribution
 6. Sales by product category
 7. Customer segmentation analysis
 8. Weekend vs weekday comparison
-9. Order status distribution
-10. Geographic sales analysis
-11. Quarterly performance summary
-12. Repeat customer rate
+9. Order status breakdown
+10. Geographic sales performance
+11. Quarterly performance metrics
+12. Repeat customer rate analysis
 
-## Technology Stack
+Run queries directly in PostgreSQL:
+
+```bash
+psql -U etl_user -d ecommerce_dw -f warehouse_schema/analytics_queries.sql
+```
+
+## 🛠 Technology Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Source Database | MySQL / PostgreSQL |
-| ETL Scripts | Python, Pandas, SQLAlchemy |
-| Data Warehouse | PostgreSQL / Snowflake / BigQuery |
-| Orchestration | Apache Airflow |
-| Visualization | Power BI / Tableau / Metabase |
-| Testing | pytest, unittest |
+| **Source Database** | MySQL / PostgreSQL |
+| **ETL Scripts** | Python 3.9+, Pandas, NumPy, SQLAlchemy |
+| **Data Warehouse** | PostgreSQL / Snowflake / BigQuery |
+| **Orchestration** | Apache Airflow 2.7+ |
+| **Visualization** | Streamlit / Power BI / Tableau |
+| **Testing** | pytest, unittest |
+| **Containerization** | Docker, Docker Compose |
 
-## Documentation
+## 📁 Project Structure
 
-See `docs/Project_Report.md` for the complete project report covering:
+```
+ETL Automation/
+├── config/
+│   ├── database.yaml             # Database connection settings
+│   └── pipeline_config.yaml      # ETL pipeline parameters
+├── data/
+│   ├── raw/                      # Extracted raw CSV files
+│   ├── processed/                # Transformed analytics-ready files
+│   └── sample/                   # Sample datasets for testing
+├── scripts/
+│   ├── extract.py                # Data extraction module
+│   ├── transform.py              # Data transformation module
+│   ├── load.py                   # Data warehouse loading module
+│   ├── etl_pipeline.py           # End-to-end pipeline runner
+│   └── setup_databases.py        # Database initialization
+├── airflow_dags/
+│   └── ecommerce_etl_dag.py      # Airflow DAG orchestration
+├── warehouse_schema/
+│   ├── source_schema.sql         # Source OLTP database DDL
+│   ├── warehouse_schema.sql      # Star schema DDL
+│   └── analytics_queries.sql     # 12 business queries
+├── dashboards/
+│   ├── app.py                    # Streamlit dashboard
+│   └── dashboard_specs.md        # Dashboard layout
+├── tests/
+│   ├── test_extract.py           # Extraction tests
+│   ├── test_transform.py         # Transformation tests
+│   └── test_quality.py           # Data quality tests
+├── docs/
+│   └── Project_Report.md         # Complete documentation
+├── logs/                         # Pipeline execution logs
+├── .env.example                  # Environment template
+├── .gitignore                    # Git ignore rules
+├── requirements.txt              # Python dependencies
+├── docker-compose.yml            # Docker services
+├── Dockerfile                    # ETL pipeline image
+├── Dockerfile.dashboard          # Streamlit dashboard image
+└── README.md                     # This file
+```
 
-- System architecture with diagrams
-- ETL pipeline design and code walkthrough
-- Star schema data warehouse design
-- Airflow automation and scheduling
-- Security, governance, and GDPR compliance
-- Scalability and optimization strategies
-- Real-world implementation examples (Amazon, Flipkart, Shopify)
+## 📖 Documentation
+
+For comprehensive documentation including architecture, schema design, and implementation examples, see:
+
+- **[Project_Report.md](docs/Project_Report.md)** — Complete project documentation
+- **[pipeline_config.yaml](config/pipeline_config.yaml)** — Pipeline configuration options
+- **[analytics_queries.sql](warehouse_schema/analytics_queries.sql)** — SQL query examples
+
+## 🐛 Troubleshooting
+
+### Docker Issues
+
+```bash
+# Remove dangling containers
+docker container prune -f
+
+# Rebuild from scratch
+docker compose up --build --force-recreate
+
+# View logs
+docker compose logs -f etl
+```
+
+### Database Connection Errors
+
+```bash
+# Test PostgreSQL connection
+psql -h localhost -U etl_user -d ecommerce_dw
+
+# Test MySQL connection
+mysql -h localhost -u root -p ecommerce_db
+```
+
+### Pipeline Failures
+
+```bash
+# Check logs
+tail -f logs/pipeline.log
+
+# Run with verbose output
+python scripts/etl_pipeline.py --verbose
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+Please ensure:
+- Code passes all tests: `pytest tests/ -v`
+- Code follows style guidelines (PEP 8)
+- Docstrings are included for all functions
+
+## 📝 License
+
+This project is licensed under the MIT License — see [LICENSE](LICENSE) file for details.
+
+## ✍️ Authors
+
+**Ladd H** — Data Engineer
+- GitHub: [@laddh](https://github.com/laddh)
+
+## 🙏 Acknowledgments
+
+- Apache Airflow documentation and community
+- PostgreSQL database design best practices
+- Real-world ETL patterns from industry leaders
+
+## 📞 Support
+
+For questions or issues:
+
+- Open an [Issue](../../issues)
+- Check existing [Discussions](../../discussions)
+- Review [Project_Report.md](docs/Project_Report.md)
 
 ---
 
-**Project:** E-commerce Data Pipeline with Automated ETL
-**Course:** Data Analytics
+<div align="center">
+
+**[⬆ Back to Top](#e-commerce-data-pipeline-with-automated-etl)**
+
+Built with ❤️ for data analytics and pipeline automation
+
+</div>
