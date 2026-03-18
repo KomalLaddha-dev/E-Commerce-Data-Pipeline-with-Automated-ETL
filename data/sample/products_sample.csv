@@ -1,0 +1,11 @@
+product_id,product_name,category,sub_category,brand,price,cost_price,stock_quantity,weight_kg,is_active,created_at,updated_at
+1,Wireless Bluetooth Earbuds,Electronics,Audio,boAt,1299.00,650.00,500,0.15,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+2,Cotton Round Neck T-Shirt,Clothing,Men,H&M,599.00,200.00,1200,0.25,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+3,Stainless Steel Water Bottle,Home,Kitchen,Milton,449.00,180.00,800,0.45,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+4,Running Shoes Pro,Footwear,Sports,Nike,4999.00,2200.00,300,0.80,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+5,Laptop Backpack 15.6 inch,Accessories,Bags,Wildcraft,1199.00,500.00,650,0.70,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+6,Smartphone 128GB,Electronics,Mobile,Samsung,15999.00,10500.00,200,0.18,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+7,Yoga Mat Premium,Fitness,Accessories,Decathlon,899.00,350.00,400,1.20,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+8,Organic Green Tea 100 bags,Grocery,Beverages,Organic India,349.00,150.00,2000,0.30,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+9,LED Desk Lamp,Home,Lighting,Philips,1599.00,700.00,350,1.50,True,2025-01-01 00:00:00,2025-12-01 00:00:00
+10,Bestseller Novel Collection,Books,Fiction,Penguin,799.00,400.00,1500,0.60,True,2025-01-01 00:00:00,2025-12-01 00:00:00

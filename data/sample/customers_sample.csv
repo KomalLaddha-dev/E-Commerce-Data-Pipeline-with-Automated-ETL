@@ -1,0 +1,11 @@
+customer_id,first_name,last_name,email,phone,address_line1,address_line2,city,state,country,postal_code,registration_date,is_active
+1,Rahul,Sharma,rahul.sharma@email.com,9876543210,123 MG Road,,Mumbai,Maharashtra,India,400001,2025-01-15 10:00:00,True
+2,Priya,Patel,priya.patel@email.com,9876543211,45 CG Road,,Ahmedabad,Gujarat,India,380001,2025-02-20 14:30:00,True
+3,Amit,Kumar,amit.kumar@email.com,9876543212,78 Connaught Place,,Delhi,Delhi,India,110001,2025-03-10 09:15:00,True
+4,Sneha,Reddy,sneha.reddy@email.com,9876543213,90 Banjara Hills,,Hyderabad,Telangana,India,500001,2025-04-05 11:45:00,True
+5,Vikram,Singh,vikram.singh@email.com,9876543214,12 MI Road,,Jaipur,Rajasthan,India,302001,2025-05-12 16:00:00,True
+6,Ananya,Das,ananya.das@email.com,9876543215,56 Park Street,,Kolkata,West Bengal,India,700001,2025-06-18 13:20:00,True
+7,Karthik,Nair,karthik.nair@email.com,9876543216,34 MG Road,,Kochi,Kerala,India,682001,2025-07-22 10:30:00,True
+8,Deepa,Gupta,deepa.gupta@email.com,9876543217,67 Hazratganj,,Lucknow,Uttar Pradesh,India,226001,2025-08-08 15:10:00,True
+9,Arjun,Mehta,arjun.mehta@email.com,9876543218,89 FC Road,,Pune,Maharashtra,India,411001,2025-09-14 12:00:00,True
+10,Pooja,Iyer,pooja.iyer@email.com,9876543219,23 Anna Nagar,,Chennai,Tamil Nadu,India,600001,2025-10-01 09:45:00,True
