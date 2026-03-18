@@ -88,7 +88,7 @@ No database installation required! The complete stack runs in Docker containers.
 
 ```bash
 # 1. Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/KomalLaddha-dev/E-Commerce-Data-Pipeline-with-Automated-ETL.git
 cd ETL\ Automation
 
 # 2. Create environment file (copy from template)
