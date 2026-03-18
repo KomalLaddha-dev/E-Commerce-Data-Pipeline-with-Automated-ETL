@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────
+# Database Configuration
+# E-commerce Data Pipeline with Automated ETL
+# ──────────────────────────────────────────────
+
+# Source Database (OLTP)
+source_database:
+  driver: "mysql+pymysql"           # mysql+pymysql or postgresql
+  host: "localhost"
+  port: 3306                        # 3306 for MySQL, 5432 for PostgreSQL
+  database: "ecommerce_db"
+  username: "etl_service"
+  password: "${SOURCE_DB_PASSWORD}"  # Use environment variable
+
+# Data Warehouse (OLAP)
+warehouse_database:
+  driver: "postgresql"
+  host: "localhost"
+  port: 5432
+  database: "ecommerce_dw"
+  username: "warehouse_user"
+  password: "${DW_PASSWORD}"         # Use environment variable
+
+# Snowflake (Alternative cloud warehouse)
+# snowflake:
+#   account: "your_account.us-east-1"
+#   warehouse: "ETL_WH"
+#   database: "ECOMMERCE_DW"
+#   schema: "PUBLIC"
+#   role: "ETL_ROLE"
+#   username: "${SNOWFLAKE_USER}"
+#   password: "${SNOWFLAKE_PASSWORD}"
+
+# BigQuery (Alternative cloud warehouse)
+# bigquery:
+#   project: "your-gcp-project"
+#   dataset: "ecommerce_dw"
+#   credentials_path: "${GOOGLE_APPLICATION_CREDENTIALS}"

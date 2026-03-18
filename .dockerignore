@@ -1,0 +1,15 @@
+__pycache__
+.pytest_cache
+*.pyc
+*.pyo
+*.egg-info
+.env
+.git
+.gitignore
+logs/*
+data/raw/*
+data/processed/*
+docs/
+airflow_dags/
+tests/
+*.md

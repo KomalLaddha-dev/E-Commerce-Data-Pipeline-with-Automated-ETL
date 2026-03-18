@@ -1,0 +1,35 @@
+# ──────────────────────────────────────────────
+# Python Dependencies
+# E-commerce Data Pipeline with Automated ETL
+# ──────────────────────────────────────────────
+# Install: pip install -r requirements.txt
+# ──────────────────────────────────────────────
+
+# Core ETL Libraries
+pandas>=2.0.0
+numpy>=1.24.0
+sqlalchemy>=2.0.0
+
+# Database Drivers
+pymysql>=1.1.0               # MySQL connector
+psycopg2-binary>=2.9.0       # PostgreSQL connector
+
+# Apache Airflow (Orchestration)
+apache-airflow>=2.7.0
+
+# Data Formats
+pyarrow>=14.0.0              # Parquet file support
+openpyxl>=3.1.0              # Excel file support
+
+# Configuration
+pyyaml>=6.0.0                # YAML config parser
+python-dotenv>=1.0.0         # .env file support
+
+# Testing
+pytest>=7.4.0
+
+# Optional: Cloud Warehouse Connectors
+# snowflake-connector-python>=3.5.0
+# snowflake-sqlalchemy>=1.5.0
+# google-cloud-bigquery>=3.13.0
+# boto3>=1.29.0               # AWS S3 integration

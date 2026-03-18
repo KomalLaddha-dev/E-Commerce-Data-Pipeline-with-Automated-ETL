@@ -1,0 +1,65 @@
+# ──────────────────────────────────────────────
+# ETL Pipeline Configuration
+# E-commerce Data Pipeline with Automated ETL
+# ──────────────────────────────────────────────
+
+pipeline:
+  name: "ecommerce_etl"
+  version: "1.0.0"
+  schedule: "0 2 * * *"              # Cron: daily at 02:00 UTC
+  timezone: "UTC"
+  max_retries: 3
+  retry_delay_minutes: 5
+
+# Extraction settings
+extraction:
+  batch_size: 10000                   # Rows per chunk for large tables
+  default_lookback_days: 1            # Incremental: extract last N days
+  output_format: "csv"                # csv or parquet
+  tables:
+    - name: "orders"
+      incremental_column: "order_date"
+      strategy: "incremental"
+    - name: "order_items"
+      incremental_column: null
+      strategy: "full"
+    - name: "customers"
+      incremental_column: "registration_date"
+      strategy: "incremental"
+    - name: "products"
+      incremental_column: "updated_at"
+      strategy: "incremental"
+    - name: "payments"
+      incremental_column: "payment_date"
+      strategy: "incremental"
+
+# Transformation settings
+transformation:
+  date_format: "%Y-%m-%d"
+  default_country: "India"
+  currency: "INR"
+  customer_segments:
+    premium_threshold_amount: 10000   # INR
+    premium_threshold_orders: 5
+    regular_threshold_amount: 2000
+    regular_threshold_orders: 1
+
+# Loading settings
+loading:
+  dimension_strategy: "full_reload"   # Truncate and reload
+  fact_strategy: "upsert"             # Insert or update
+  conflict_column: "order_id"
+  refresh_views: true
+
+# Data quality thresholds
+quality_checks:
+  min_fact_rows: 1                    # Fail if fewer rows than this
+  max_null_percentage: 5              # Warn if >5% nulls in key columns
+  max_duplicate_percentage: 1         # Fail if >1% duplicates
+
+# File paths (relative to project root)
+paths:
+  raw_data: "data/raw"
+  processed_data: "data/processed"
+  logs: "logs"
+  metadata: "config/etl_state.json"

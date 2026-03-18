@@ -1,0 +1,52 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ETL runtime outputs
+logs/*.log
+logs/
+data/raw/*.csv
+data/processed/*.csv
+!data/sample/*.csv
+config/etl_state.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# IDE project files
+.project
+.pydevproject
+
+# Temporary files
+tmpclaude-*/
+temp/
+tmp/

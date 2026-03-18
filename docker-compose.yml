@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────────
+# E-commerce Data Pipeline with Automated ETL — Docker Compose
+#
+# Usage:
+#   docker compose up --build          Build and run everything
+#   docker compose up -d postgres      Start only PostgreSQL
+#   docker compose run etl             Run the ETL pipeline
+#   docker compose down -v             Stop and remove volumes
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL Database ───────────────────────────────────
+  # Hosts both the source OLTP database and the data warehouse
+  postgres:
+    image: postgres:15-alpine
+    container_name: etl_postgres
+    environment:
+      POSTGRES_USER: ${PG_USER:-etl_user}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-etl_password}
+      POSTGRES_DB: ${PG_DB:-postgres}
+    ports:
+      - "5433:5432"        # Exposed on host port 5433 to avoid conflicts
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-etl_user} -d ${PG_DB:-postgres}"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  # ── ETL Pipeline ──────────────────────────────────────────
+  # Builds from Dockerfile, runs setup + full ETL pipeline
+  etl:
+    build: .
+    container_name: etl_pipeline
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Setup script connection
+      PG_HOST: ${PG_HOST:-postgres}
+      PG_PORT: ${PG_PORT:-5432}
+      PG_USER: ${PG_USER:-etl_user}
+      PG_PASSWORD: ${PG_PASSWORD:-etl_password}
+      # Source database (Extract step)
+      SOURCE_DB_HOST: ${SOURCE_DB_HOST:-postgres}
+      SOURCE_DB_PORT: ${SOURCE_DB_PORT:-5432}
+      SOURCE_DB_USER: ${SOURCE_DB_USER:-etl_user}
+      SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD:-etl_password}
+      SOURCE_DB_NAME: ${SOURCE_DB_NAME:-ecommerce_db}
+      SOURCE_DB_DRIVER: ${SOURCE_DB_DRIVER:-postgresql}
+      # Data warehouse (Load step)
+      DW_HOST: ${DW_HOST:-postgres}
+      DW_PORT: ${DW_PORT:-5432}
+      DW_USER: ${DW_USER:-etl_user}
+      DW_PASSWORD: ${DW_PASSWORD:-etl_password}
+      DW_NAME: ${DW_NAME:-ecommerce_dw}
+      DW_DRIVER: ${DW_DRIVER:-postgresql}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+  # ── Streamlit Dashboard ───────────────────────────────────
+  # Interactive analytics dashboard at http://localhost:8501
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: etl_dashboard
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DW_HOST: ${DW_HOST:-postgres}
+      DW_PORT: ${DW_PORT:-5432}
+      DW_USER: ${DW_USER:-etl_user}
+      DW_PASSWORD: ${DW_PASSWORD:-etl_password}
+      DW_NAME: ${DW_NAME:-ecommerce_dw}
+      DW_DRIVER: ${DW_DRIVER:-postgresql}
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    driver: local
