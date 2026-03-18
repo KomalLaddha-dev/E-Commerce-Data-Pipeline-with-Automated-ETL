@@ -130,7 +130,7 @@ Requires PostgreSQL/MySQL already installed on your system.
 
 ```bash
 # 1. Clone repository
-git clone <your-repo-url>
+git clone https://github.com/KomalLaddha-dev/E-Commerce-Data-Pipeline-with-Automated-ETL.git
 cd ETL\ Automation
 
 # 2. Create and activate virtual environment
