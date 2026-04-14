@@ -15,6 +15,8 @@ import time
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+from generate_large_data import generate_large_data
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Connection parameters (from environment or defaults)
@@ -28,6 +30,18 @@ WAREHOUSE_DB = os.environ.get("DW_NAME", "ecommerce_dw")
 
 SOURCE_SCHEMA_FILE = os.path.join(BASE_DIR, "warehouse_schema", "source_schema.sql")
 WAREHOUSE_SCHEMA_FILE = os.path.join(BASE_DIR, "warehouse_schema", "warehouse_docker.sql")
+
+ENABLE_LARGE_DATA = os.environ.get("ENABLE_LARGE_DATA", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "y",
+}
+LARGE_DATA_CUSTOMERS = int(os.environ.get("LARGE_DATA_CUSTOMERS", "20000"))
+LARGE_DATA_PRODUCTS = int(os.environ.get("LARGE_DATA_PRODUCTS", "3000"))
+LARGE_DATA_ORDERS = int(os.environ.get("LARGE_DATA_ORDERS", "120000"))
+LARGE_DATA_ORDER_LOOKBACK_HOURS = int(os.environ.get("LARGE_DATA_ORDER_LOOKBACK_HOURS", "8760"))
+LARGE_DATA_MIN_ORDER_SPAN_DAYS = int(os.environ.get("LARGE_DATA_MIN_ORDER_SPAN_DAYS", "90"))
 
 
 def wait_for_postgres(max_retries=30, delay=2):
@@ -152,6 +166,65 @@ def verify_setup():
             print(f"  WARNING: Could not verify {db_name}: {e}")
 
 
+def maybe_generate_large_data():
+    """Generate high-volume synthetic source data when enabled."""
+    if not ENABLE_LARGE_DATA:
+        print("  Large data generation disabled (ENABLE_LARGE_DATA=false).")
+        return
+
+    print(
+        "  Target volumes: "
+        f"customers={LARGE_DATA_CUSTOMERS}, "
+        f"products={LARGE_DATA_PRODUCTS}, "
+        f"orders={LARGE_DATA_ORDERS}"
+    )
+
+    summary = generate_large_data(
+        target_customers=LARGE_DATA_CUSTOMERS,
+        target_products=LARGE_DATA_PRODUCTS,
+        target_orders=LARGE_DATA_ORDERS,
+        lookback_hours=LARGE_DATA_ORDER_LOOKBACK_HOURS,
+        min_order_span_days=LARGE_DATA_MIN_ORDER_SPAN_DAYS,
+    )
+
+    inserted = summary["inserted"]
+    final_counts = summary["final_counts"]
+    date_distribution = summary.get("date_distribution", {})
+
+    print(
+        "  Inserted: "
+        f"customers={inserted['customers']}, "
+        f"products={inserted['products']}, "
+        f"orders={inserted['orders']}, "
+        f"order_items={inserted['order_items']}, "
+        f"payments={inserted['payments']}"
+    )
+    print(
+        "  Final source counts: "
+        f"customers={final_counts['customers']}, "
+        f"products={final_counts['products']}, "
+        f"orders={final_counts['orders']}, "
+        f"order_items={final_counts['order_items']}, "
+        f"payments={final_counts['payments']}"
+    )
+
+    if date_distribution:
+        before = date_distribution.get("before", {})
+        after = date_distribution.get("after", {})
+        print(
+            "  Order date spread: "
+            f"before={before.get('distinct_days', 0)} days "
+            f"(span={before.get('span_days', 0)}), "
+            f"after={after.get('distinct_days', 0)} days "
+            f"(span={after.get('span_days', 0)})"
+        )
+        print(
+            "  Date rebalance updates: "
+            f"orders={date_distribution.get('rebalanced_orders', 0)}, "
+            f"payments={date_distribution.get('rebalanced_payments', 0)}"
+        )
+
+
 def main():
     print("=" * 60)
     print("  DATABASE SETUP")
@@ -169,6 +242,10 @@ def main():
     # Step 3: Initialize source database (OLTP schema + seed data)
     print(f"\nInitializing source database ({SOURCE_DB})...")
     run_sql_file(SOURCE_DB, SOURCE_SCHEMA_FILE)
+
+    # Step 3b: Scale source data volume for stress and dashboard scenarios
+    print("\nGenerating large synthetic source data...")
+    maybe_generate_large_data()
 
     # Step 4: Initialize warehouse database (star schema)
     print(f"\nInitializing warehouse database ({WAREHOUSE_DB})...")

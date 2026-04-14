@@ -19,6 +19,9 @@ A complete, **production-grade data pipeline** that extracts transactional data 
 - ✅ **Data Quality Checks** — Automated validation of loaded data
 - 📅 **Airflow Orchestration** — Schedule, retry, and monitor pipeline runs
 - 📈 **Real-time Dashboards** — Streamlit integration for analytics
+- 🧱 **Warehouse Schema Diagram** — Visual model page with live table metadata
+- 🏗️ **Large Synthetic Data Generation** — Idempotent high-volume source data seeding
+- 🛡️ **Resilient Extraction Logic** — Incremental mode with automatic full fallback
 - 🐳 **Docker Ready** — Complete containerized setup with PostgreSQL
 - 🧪 **Comprehensive Tests** — Unit tests for all pipeline stages
 - 📚 **Well Documented** — Detailed SQL schemas and queries included
@@ -99,6 +102,7 @@ docker compose up --build
 
 # This will:
 # ✓ Start PostgreSQL 15 (source DB + data warehouse)
+# ✓ Generate large synthetic source data to configured targets
 # ✓ Run the full ETL pipeline
 # ✓ Start the Streamlit dashboard (http://localhost:8501)
 ```
@@ -334,6 +338,7 @@ ETL Automation/
 For comprehensive documentation including architecture, schema design, and implementation examples, see:
 
 - **[Project_Report.md](docs/Project_Report.md)** — Complete project documentation
+- **[PROJECT_RUNBOOK.md](docs/PROJECT_RUNBOOK.md)** — Features, automation, run process, and technology guide
 - **[pipeline_config.yaml](config/pipeline_config.yaml)** — Pipeline configuration options
 - **[analytics_queries.sql](warehouse_schema/analytics_queries.sql)** — SQL query examples
 

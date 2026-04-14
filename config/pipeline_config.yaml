@@ -14,7 +14,7 @@ pipeline:
 # Extraction settings
 extraction:
   batch_size: 10000                   # Rows per chunk for large tables
-  default_lookback_days: 1            # Incremental: extract last N days
+  default_lookback_days: 365          # Incremental: extract last N days
   output_format: "csv"                # csv or parquet
   tables:
     - name: "orders"
@@ -24,11 +24,11 @@ extraction:
       incremental_column: null
       strategy: "full"
     - name: "customers"
-      incremental_column: "registration_date"
-      strategy: "incremental"
+      incremental_column: null
+      strategy: "full"
     - name: "products"
-      incremental_column: "updated_at"
-      strategy: "incremental"
+      incremental_column: null
+      strategy: "full"
     - name: "payments"
       incremental_column: "payment_date"
       strategy: "incremental"

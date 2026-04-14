@@ -52,6 +52,86 @@ def run_query(query):
     return pd.read_sql(text(query), engine)
 
 
+def build_schema_diagram():
+    """Build a visual warehouse schema diagram using Plotly."""
+    node_positions = {
+        "customer_dim": (0.15, 0.75),
+        "product_dim": (0.15, 0.50),
+        "date_dim": (0.15, 0.25),
+        "payment_dim": (0.85, 0.50),
+        "sales_fact": (0.50, 0.50),
+    }
+
+    node_colors = {
+        "customer_dim": "#2563EB",
+        "product_dim": "#2563EB",
+        "date_dim": "#2563EB",
+        "payment_dim": "#2563EB",
+        "sales_fact": "#DC2626",
+    }
+
+    relationships = [
+        ("customer_dim", "sales_fact", "customer_id"),
+        ("date_dim", "sales_fact", "date_key"),
+        ("payment_dim", "sales_fact", "payment_id"),
+    ]
+
+    fig = go.Figure()
+
+    for source, target, label in relationships:
+        x0, y0 = node_positions[source]
+        x1, y1 = node_positions[target]
+        fig.add_trace(
+            go.Scatter(
+                x=[x0, x1],
+                y=[y0, y1],
+                mode="lines",
+                line={"color": "#64748B", "width": 2},
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        fig.add_annotation(
+            x=(x0 + x1) / 2,
+            y=(y0 + y1) / 2 + 0.03,
+            text=label,
+            showarrow=False,
+            font={"size": 11, "color": "#334155"},
+            bgcolor="rgba(255,255,255,0.8)",
+        )
+
+    for table_name, (x, y) in node_positions.items():
+        is_fact = table_name == "sales_fact"
+        fig.add_trace(
+            go.Scatter(
+                x=[x],
+                y=[y],
+                mode="markers+text",
+                marker={
+                    "size": 62 if is_fact else 52,
+                    "color": node_colors[table_name],
+                    "symbol": "square",
+                    "line": {"width": 2, "color": "#0F172A"},
+                },
+                text=[table_name],
+                textposition="middle center",
+                textfont={"color": "white", "size": 12 if is_fact else 11},
+                hovertemplate=f"<b>{table_name}</b><extra></extra>",
+                showlegend=False,
+            )
+        )
+
+    fig.update_layout(
+        margin={"l": 10, "r": 10, "t": 10, "b": 10},
+        xaxis={"visible": False, "range": [0.0, 1.0]},
+        yaxis={"visible": False, "range": [0.0, 1.0]},
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        height=460,
+    )
+    return fig
+
+
 # ──────────────────────────────────────────────
 # Sidebar
 # ──────────────────────────────────────────────
@@ -60,7 +140,13 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigate",
-    ["🏠 Sales Overview", "👥 Customer Analytics", "📦 Product Performance", "💳 Payment Analysis"],
+    [
+        "🏠 Sales Overview",
+        "👥 Customer Analytics",
+        "📦 Product Performance",
+        "💳 Payment Analysis",
+        "🧩 Warehouse Schema",
+    ],
 )
 
 st.sidebar.markdown("---")
@@ -399,3 +485,60 @@ elif page == "💳 Payment Analysis":
         method_display.columns = ["Method", "Transactions", "Total (₹)"]
         method_display["Total (₹)"] = method_display["Total (₹)"].apply(lambda x: f"₹{x:,.2f}")
         st.dataframe(method_display, use_container_width=True, hide_index=True)
+
+
+# ══════════════════════════════════════════════
+# PAGE 5: Warehouse Schema
+# ══════════════════════════════════════════════
+elif page == "🧩 Warehouse Schema":
+    st.title("🧩 Warehouse Schema Diagram")
+    st.markdown("Visual relationship map of the analytics star schema used by the dashboard.")
+
+    st.plotly_chart(build_schema_diagram(), use_container_width=True)
+
+    counts = run_query(
+        """
+        SELECT 'customer_dim' AS table_name, COUNT(*) AS row_count FROM customer_dim
+        UNION ALL
+        SELECT 'product_dim', COUNT(*) FROM product_dim
+        UNION ALL
+        SELECT 'date_dim', COUNT(*) FROM date_dim
+        UNION ALL
+        SELECT 'payment_dim', COUNT(*) FROM payment_dim
+        UNION ALL
+        SELECT 'sales_fact', COUNT(*) FROM sales_fact
+        ORDER BY table_name
+        """
+    )
+
+    rel = pd.DataFrame(
+        [
+            ["customer_dim.customer_id", "sales_fact.customer_id", "Many-to-one"],
+            ["date_dim.date_key", "sales_fact.date_key", "Many-to-one"],
+            ["payment_dim.payment_id", "sales_fact.payment_id", "Many-to-one"],
+            ["product_dim", "Standalone catalog dimension", "No direct foreign key"],
+        ],
+        columns=["From", "To", "Relationship"],
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("📊 Table Row Counts")
+        st.dataframe(counts, use_container_width=True, hide_index=True)
+
+    with c2:
+        st.subheader("🔗 Key Relationships")
+        st.dataframe(rel, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    st.subheader("🧾 Warehouse Columns")
+    columns_df = run_query(
+        """
+        SELECT table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name IN ('customer_dim', 'product_dim', 'date_dim', 'payment_dim', 'sales_fact')
+        ORDER BY table_name, ordinal_position
+        """
+    )
+    st.dataframe(columns_df, use_container_width=True, hide_index=True)

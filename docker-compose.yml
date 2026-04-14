@@ -58,6 +58,13 @@ services:
       DW_PASSWORD: ${DW_PASSWORD:-etl_password}
       DW_NAME: ${DW_NAME:-ecommerce_dw}
       DW_DRIVER: ${DW_DRIVER:-postgresql}
+      # Synthetic large-data generation (idempotent to target counts)
+      ENABLE_LARGE_DATA: ${ENABLE_LARGE_DATA:-true}
+      LARGE_DATA_CUSTOMERS: ${LARGE_DATA_CUSTOMERS:-20000}
+      LARGE_DATA_PRODUCTS: ${LARGE_DATA_PRODUCTS:-3000}
+      LARGE_DATA_ORDERS: ${LARGE_DATA_ORDERS:-120000}
+      LARGE_DATA_ORDER_LOOKBACK_HOURS: ${LARGE_DATA_ORDER_LOOKBACK_HOURS:-8760}
+      LARGE_DATA_MIN_ORDER_SPAN_DAYS: ${LARGE_DATA_MIN_ORDER_SPAN_DAYS:-90}
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs

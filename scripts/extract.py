@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import logging
 import os
 import json
+import yaml
 
 # ──────────────────────────────────────────────
 # Configuration
@@ -30,6 +31,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DATA_PATH = os.path.join(BASE_DIR, "data", "raw")
 LOG_PATH = os.path.join(BASE_DIR, "logs")
 METADATA_PATH = os.path.join(BASE_DIR, "config", "etl_state.json")
+PIPELINE_CONFIG_PATH = os.path.join(BASE_DIR, "config", "pipeline_config.yaml")
 
 os.makedirs(RAW_DATA_PATH, exist_ok=True)
 os.makedirs(LOG_PATH, exist_ok=True)
@@ -40,6 +42,35 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_TABLES_CONFIG = [
+    {
+        "table": "orders",
+        "incremental_col": "order_date",
+        "description": "Customer orders (header records)",
+    },
+    {
+        "table": "order_items",
+        "incremental_col": None,
+        "description": "Order line items",
+    },
+    {
+        "table": "customers",
+        "incremental_col": "registration_date",
+        "description": "Customer profiles",
+    },
+    {
+        "table": "products",
+        "incremental_col": "updated_at",
+        "description": "Product catalog",
+    },
+    {
+        "table": "payments",
+        "incremental_col": "payment_date",
+        "description": "Payment transactions",
+    },
+]
 
 
 # ──────────────────────────────────────────────
@@ -58,6 +89,49 @@ def save_metadata(metadata):
     os.makedirs(os.path.dirname(METADATA_PATH), exist_ok=True)
     with open(METADATA_PATH, "w") as f:
         json.dump(metadata, f, indent=2, default=str)
+
+
+def load_extraction_config():
+    """
+    Load extraction settings from pipeline_config.yaml.
+
+    Returns:
+        tuple: (default_lookback_days, tables_config)
+    """
+    default_lookback_days = 1
+
+    if not os.path.exists(PIPELINE_CONFIG_PATH):
+        logger.warning("pipeline_config.yaml not found. Using default extraction settings.")
+        return default_lookback_days, DEFAULT_TABLES_CONFIG
+
+    try:
+        with open(PIPELINE_CONFIG_PATH, "r", encoding="utf-8") as config_file:
+            config = yaml.safe_load(config_file) or {}
+
+        extraction = config.get("extraction", {})
+        default_lookback_days = int(extraction.get("default_lookback_days", 1))
+
+        configured_tables = []
+        for table in extraction.get("tables", []):
+            table_name = table.get("name")
+            if not table_name:
+                continue
+            configured_tables.append(
+                {
+                    "table": table_name,
+                    "incremental_col": table.get("incremental_column"),
+                    "description": table_name,
+                }
+            )
+
+        if configured_tables:
+            return default_lookback_days, configured_tables
+
+        return default_lookback_days, DEFAULT_TABLES_CONFIG
+
+    except Exception as err:
+        logger.warning(f"Could not parse pipeline_config.yaml: {err}. Using defaults.")
+        return default_lookback_days, DEFAULT_TABLES_CONFIG
 
 
 # ──────────────────────────────────────────────
@@ -88,7 +162,7 @@ def extract_table(engine, table_name, incremental_col=None, last_run=None):
         last_run:        Datetime of the last successful extraction
 
     Returns:
-        pandas DataFrame containing extracted records
+        tuple: (pandas DataFrame containing extracted records, strategy_used)
     """
     try:
         if incremental_col and last_run:
@@ -103,12 +177,25 @@ def extract_table(engine, table_name, incremental_col=None, last_run=None):
                 f"Column: {incremental_col} | Since: {last_run} | "
                 f"Rows: {len(df)}"
             )
+
+            # Automatic bootstrap fallback: if incremental returns nothing,
+            # run a one-time full extract to avoid downstream file-not-found failures.
+            if df.empty:
+                full_query = f"SELECT * FROM {table_name}"
+                full_df = pd.read_sql(full_query, engine)
+                if not full_df.empty:
+                    logger.warning(
+                        f"Incremental extract empty for {table_name}. "
+                        f"Falling back to full extract ({len(full_df)} rows)."
+                    )
+                    return full_df, "full_fallback"
+
+            return df, "incremental"
         else:
             query = f"SELECT * FROM {table_name}"
             df = pd.read_sql(query, engine)
             logger.info(f"Full extract: {table_name} | Rows: {len(df)}")
-
-        return df
+            return df, "full"
 
     except Exception as e:
         logger.error(f"Extraction failed for {table_name}: {e}")
@@ -139,36 +226,6 @@ def save_raw_data(df, table_name):
 # Main Extraction Pipeline
 # ──────────────────────────────────────────────
 
-# Tables to extract with their configuration
-TABLES_CONFIG = [
-    {
-        "table": "orders",
-        "incremental_col": "order_date",
-        "description": "Customer orders (header records)",
-    },
-    {
-        "table": "order_items",
-        "incremental_col": None,  # Full extract (junction table)
-        "description": "Order line items",
-    },
-    {
-        "table": "customers",
-        "incremental_col": "registration_date",
-        "description": "Customer profiles",
-    },
-    {
-        "table": "products",
-        "incremental_col": "updated_at",
-        "description": "Product catalog",
-    },
-    {
-        "table": "payments",
-        "incremental_col": "payment_date",
-        "description": "Payment transactions",
-    },
-]
-
-
 def run_extraction():
     """
     Execute the full extraction pipeline.
@@ -188,23 +245,33 @@ def run_extraction():
     engine = get_db_engine()
     metadata = load_metadata()
 
-    # Default last_run: 24 hours ago (for first run)
-    default_last_run = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    default_lookback_days, tables_config = load_extraction_config()
+    default_last_run = (datetime.now() - timedelta(days=default_lookback_days)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
     extracted_files = []
     extraction_summary = []
 
-    for config in TABLES_CONFIG:
+    for config in tables_config:
         table_name = config["table"]
         incr_col = config["incremental_col"]
 
         # Get last run timestamp from metadata
         last_run = metadata.get(table_name, {}).get("last_run", default_last_run)
         if isinstance(last_run, str):
-            last_run = datetime.strptime(last_run, "%Y-%m-%d %H:%M:%S")
+            try:
+                last_run = datetime.strptime(last_run, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                last_run = pd.to_datetime(last_run, errors="coerce")
+                if pd.isna(last_run):
+                    last_run = datetime.strptime(default_last_run, "%Y-%m-%d %H:%M:%S")
+
+        if isinstance(last_run, pd.Timestamp):
+            last_run = last_run.to_pydatetime()
 
         # Extract data
-        df = extract_table(
+        df, strategy_used = extract_table(
             engine,
             table_name,
             incr_col,
@@ -226,7 +293,7 @@ def run_extraction():
         extraction_summary.append({
             "table": table_name,
             "rows": len(df),
-            "strategy": "incremental" if incr_col else "full",
+            "strategy": strategy_used,
         })
 
     # Save metadata for next run
