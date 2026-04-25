@@ -4,7 +4,7 @@ E-commerce Data Pipeline with Automated ETL
 
 Creates both the source (OLTP) and warehouse (OLAP) databases
 in the Dockerized PostgreSQL instance, then initializes their
-schemas and seeds the source with sample data.
+schemas and seeds the source with synthetic data.
 
 Run this before the ETL pipeline on first startup.
 """
@@ -32,16 +32,12 @@ SOURCE_SCHEMA_FILE = os.path.join(BASE_DIR, "warehouse_schema", "source_schema.s
 WAREHOUSE_SCHEMA_FILE = os.path.join(BASE_DIR, "warehouse_schema", "warehouse_docker.sql")
 
 ENABLE_LARGE_DATA = os.environ.get("ENABLE_LARGE_DATA", "true").lower() in {
-    "1",
-    "true",
-    "yes",
-    "y",
+    "1", "true", "yes", "y",
 }
-LARGE_DATA_CUSTOMERS = int(os.environ.get("LARGE_DATA_CUSTOMERS", "20000"))
-LARGE_DATA_PRODUCTS = int(os.environ.get("LARGE_DATA_PRODUCTS", "3000"))
-LARGE_DATA_ORDERS = int(os.environ.get("LARGE_DATA_ORDERS", "120000"))
-LARGE_DATA_ORDER_LOOKBACK_HOURS = int(os.environ.get("LARGE_DATA_ORDER_LOOKBACK_HOURS", "8760"))
-LARGE_DATA_MIN_ORDER_SPAN_DAYS = int(os.environ.get("LARGE_DATA_MIN_ORDER_SPAN_DAYS", "90"))
+LARGE_DATA_CUSTOMERS = int(os.environ.get("LARGE_DATA_CUSTOMERS", "2000"))
+LARGE_DATA_PRODUCTS = int(os.environ.get("LARGE_DATA_PRODUCTS", "500"))
+LARGE_DATA_ORDERS = int(os.environ.get("LARGE_DATA_ORDERS", "15000"))
+LARGE_DATA_LOOKBACK_DAYS = int(os.environ.get("LARGE_DATA_LOOKBACK_DAYS", "365"))
 
 
 def wait_for_postgres(max_retries=30, delay=2):
@@ -131,7 +127,7 @@ def run_sql_file(db_name, filepath):
                 cur2.execute(stmt)
                 conn2.commit()
                 success_count += 1
-            except Exception as stmt_err:
+            except Exception:
                 conn2.rollback()
                 error_count += 1
         print(f"  Statement-by-statement: {success_count} succeeded, {error_count} skipped")
@@ -183,13 +179,11 @@ def maybe_generate_large_data():
         target_customers=LARGE_DATA_CUSTOMERS,
         target_products=LARGE_DATA_PRODUCTS,
         target_orders=LARGE_DATA_ORDERS,
-        lookback_hours=LARGE_DATA_ORDER_LOOKBACK_HOURS,
-        min_order_span_days=LARGE_DATA_MIN_ORDER_SPAN_DAYS,
+        lookback_days=LARGE_DATA_LOOKBACK_DAYS,
     )
 
     inserted = summary["inserted"]
     final_counts = summary["final_counts"]
-    date_distribution = summary.get("date_distribution", {})
 
     print(
         "  Inserted: "
@@ -208,22 +202,6 @@ def maybe_generate_large_data():
         f"payments={final_counts['payments']}"
     )
 
-    if date_distribution:
-        before = date_distribution.get("before", {})
-        after = date_distribution.get("after", {})
-        print(
-            "  Order date spread: "
-            f"before={before.get('distinct_days', 0)} days "
-            f"(span={before.get('span_days', 0)}), "
-            f"after={after.get('distinct_days', 0)} days "
-            f"(span={after.get('span_days', 0)})"
-        )
-        print(
-            "  Date rebalance updates: "
-            f"orders={date_distribution.get('rebalanced_orders', 0)}, "
-            f"payments={date_distribution.get('rebalanced_payments', 0)}"
-        )
-
 
 def main():
     print("=" * 60)
@@ -239,12 +217,12 @@ def main():
     create_database(SOURCE_DB)
     create_database(WAREHOUSE_DB)
 
-    # Step 3: Initialize source database (OLTP schema + seed data)
+    # Step 3: Initialize source database (OLTP schema)
     print(f"\nInitializing source database ({SOURCE_DB})...")
     run_sql_file(SOURCE_DB, SOURCE_SCHEMA_FILE)
 
-    # Step 3b: Scale source data volume for stress and dashboard scenarios
-    print("\nGenerating large synthetic source data...")
+    # Step 3b: Seed source with synthetic data
+    print("\nGenerating realistic synthetic data...")
     maybe_generate_large_data()
 
     # Step 4: Initialize warehouse database (star schema)

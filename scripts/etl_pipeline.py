@@ -1,24 +1,26 @@
 """
-etl_pipeline.py — End-to-End ETL Pipeline Runner
+etl_pipeline.py — Pipeline Orchestrator
 E-commerce Data Pipeline with Automated ETL
 
-Orchestrates the full Extract → Transform → Load pipeline.
-Can be run standalone or called by Apache Airflow DAG.
+Coordinates the full ETL pipeline:
+  1. Extract raw data from source OLTP
+  2. Transform and build star schema tables
+  3. Load into the data warehouse
 """
 
-import logging
-import os
 import sys
+import os
+import logging
 from datetime import datetime
 
-# Add project root to path
+# Ensure scripts directory is importable
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from extract import run_extraction
+from transform import run_transformation
+from load import run_loading
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, BASE_DIR)
-
-from scripts.extract import run_extraction
-from scripts.transform import run_transformation
-from scripts.load import run_loading
-
 LOG_PATH = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_PATH, exist_ok=True)
 
@@ -30,96 +32,64 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_etl_pipeline():
+def run_pipeline():
     """
-    Execute the complete ETL pipeline.
+    Execute the full ETL pipeline.
 
     Steps:
-        1. Extract data from source database
-        2. Transform raw data into analytics-ready format
-        3. Load transformed data into data warehouse
-
-    Returns:
-        dict with pipeline summary including timings and row counts
+    1. Extract: Pull data from source OLTP → staging CSVs
+    2. Transform: Clean, enrich, build star schema → processed CSVs
+    3. Load: Push to data warehouse → refresh materialized views
     """
     pipeline_start = datetime.now()
     batch_id = pipeline_start.strftime("BATCH_%Y%m%d_%H%M%S")
 
     print("=" * 60)
-    print(f"  E-COMMERCE ETL PIPELINE")
-    print(f"  Batch ID: {batch_id}")
-    print(f"  Started:  {pipeline_start.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("  E-COMMERCE ETL PIPELINE")
+    print(f"  Batch: {batch_id}")
     print("=" * 60)
-
-    logger.info(f"Pipeline started | Batch: {batch_id}")
-    results = {"batch_id": batch_id, "steps": {}}
+    logger.info(f"PIPELINE STARTED — Batch: {batch_id}")
 
     try:
-        # ── STEP 1: EXTRACT ──
-        print("\n[1/3] EXTRACTING data from source database...")
-        step_start = datetime.now()
-        extracted_files = run_extraction()
-        step_elapsed = (datetime.now() - step_start).total_seconds()
-        results["steps"]["extract"] = {
-            "status": "success",
-            "files": len(extracted_files),
-            "duration_sec": step_elapsed,
-        }
-        logger.info(f"Extract complete | Files: {len(extracted_files)} | Time: {step_elapsed:.2f}s")
+        # ── Step 1: Extract ──
+        print("\n[1/3] EXTRACTION PHASE")
+        print("─" * 40)
+        extract_results = run_extraction(incremental=False)
 
-        # ── STEP 2: TRANSFORM ──
-        print("\n[2/3] TRANSFORMING raw data...")
-        step_start = datetime.now()
+        extracted_tables = [r for r in extract_results if r["status"] == "success"]
+        if not extracted_tables:
+            raise RuntimeError("No tables were successfully extracted!")
+
+        total_extracted = sum(r["rows"] for r in extracted_tables)
+        print(f"\n✓ Extracted {total_extracted} total rows from {len(extracted_tables)} tables")
+
+        # ── Step 2: Transform ──
+        print("\n[2/3] TRANSFORMATION PHASE")
+        print("─" * 40)
         transform_results = run_transformation()
-        step_elapsed = (datetime.now() - step_start).total_seconds()
-        results["steps"]["transform"] = {
-            "status": "success",
-            "tables": transform_results,
-            "duration_sec": step_elapsed,
-        }
-        logger.info(f"Transform complete | Tables: {transform_results} | Time: {step_elapsed:.2f}s")
+        print(f"\n✓ Built {len(transform_results)} output tables")
 
-        # ── STEP 3: LOAD ──
-        print("\n[3/3] LOADING data into warehouse...")
-        step_start = datetime.now()
+        # ── Step 3: Load ──
+        print("\n[3/3] LOADING PHASE")
+        print("─" * 40)
         load_results = run_loading()
-        step_elapsed = (datetime.now() - step_start).total_seconds()
-        results["steps"]["load"] = {
-            "status": "success",
-            "tables_loaded": len(load_results),
-            "duration_sec": step_elapsed,
-        }
-        logger.info(f"Load complete | Tables: {len(load_results)} | Time: {step_elapsed:.2f}s")
 
-        # ── SUMMARY ──
-        total_elapsed = (datetime.now() - pipeline_start).total_seconds()
-        results["total_duration_sec"] = total_elapsed
-        results["status"] = "success"
-
-        print("\n" + "=" * 60)
-        print(f"  PIPELINE COMPLETE")
-        print(f"  Status:   SUCCESS")
-        print(f"  Duration: {total_elapsed:.2f} seconds")
-        print("=" * 60)
-
-        logger.info(f"Pipeline SUCCESS | Batch: {batch_id} | Duration: {total_elapsed:.2f}s")
+        total_loaded = sum(load_results.values())
+        print(f"\n✓ Loaded {total_loaded} total rows into {len(load_results)} tables")
 
     except Exception as e:
-        total_elapsed = (datetime.now() - pipeline_start).total_seconds()
-        results["status"] = "failed"
-        results["error"] = str(e)
+        elapsed = (datetime.now() - pipeline_start).total_seconds()
+        logger.error(f"PIPELINE FAILED after {elapsed:.2f}s: {e}")
+        print(f"\n✗ PIPELINE FAILED: {e}")
+        sys.exit(1)
 
-        print("\n" + "=" * 60)
-        print(f"  PIPELINE FAILED")
-        print(f"  Error:    {e}")
-        print(f"  Duration: {total_elapsed:.2f} seconds")
-        print("=" * 60)
+    elapsed = (datetime.now() - pipeline_start).total_seconds()
+    logger.info(f"PIPELINE COMPLETE — Time: {elapsed:.2f}s")
 
-        logger.error(f"Pipeline FAILED | Batch: {batch_id} | Error: {e}")
-        raise
-
-    return results
+    print("\n" + "=" * 60)
+    print(f"  PIPELINE COMPLETE — {elapsed:.2f} seconds")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
-    run_etl_pipeline()
+    run_pipeline()

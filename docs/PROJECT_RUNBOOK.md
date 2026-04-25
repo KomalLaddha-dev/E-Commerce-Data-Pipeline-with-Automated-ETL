@@ -57,6 +57,10 @@ LARGE_DATA_PRODUCTS=3000
 LARGE_DATA_ORDERS=120000
 LARGE_DATA_ORDER_LOOKBACK_HOURS=8760
 LARGE_DATA_MIN_ORDER_SPAN_DAYS=90
+LARGE_DATA_PREMIUM_CUSTOMER_PERCENT=15
+LARGE_DATA_REGULAR_CUSTOMER_PERCENT=45
+LARGE_DATA_PREMIUM_ORDER_SHARE=0.72
+LARGE_DATA_MAX_AVG_ORDER_VALUE=60
 ```
 
 ### 4.2 Start the stack
@@ -128,6 +132,10 @@ Large-data generation is controlled by environment variables and is idempotent:
 | `LARGE_DATA_ORDERS` | Target order rows |
 | `LARGE_DATA_ORDER_LOOKBACK_HOURS` | History window used for order timestamp distribution |
 | `LARGE_DATA_MIN_ORDER_SPAN_DAYS` | Minimum distinct date-span target; triggers timestamp rebalance when too narrow |
+| `LARGE_DATA_PREMIUM_CUSTOMER_PERCENT` | Target premium-customer share (segment rebalance) |
+| `LARGE_DATA_REGULAR_CUSTOMER_PERCENT` | Target regular-customer share (remaining becomes New) |
+| `LARGE_DATA_PREMIUM_ORDER_SHARE` | Share of high-value orders assigned to premium customers |
+| `LARGE_DATA_MAX_AVG_ORDER_VALUE` | Caps average source order value via automatic scaling |
 
 ## 7. Dashboard Pages
 

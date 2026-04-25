@@ -48,12 +48,10 @@ def task_extract(**kwargs):
     from scripts.extract import run_extraction
 
     logger.info("Starting extraction task...")
-    files = run_extraction()
-    logger.info(f"Extraction complete. Files created: {len(files)}")
-
-    # Push file paths to XCom for downstream tasks
-    kwargs["ti"].xcom_push(key="extracted_files", value=files)
-    return files
+    results = run_extraction()
+    logger.info(f"Extraction complete: {len(results)} tables processed")
+    kwargs["ti"].xcom_push(key="extract_results", value=results)
+    return results
 
 
 def task_transform(**kwargs):
@@ -63,7 +61,6 @@ def task_transform(**kwargs):
     logger.info("Starting transformation task...")
     results = run_transformation()
     logger.info(f"Transformation complete: {results}")
-
     kwargs["ti"].xcom_push(key="transform_results", value=results)
     return results
 
@@ -75,7 +72,6 @@ def task_load(**kwargs):
     logger.info("Starting loading task...")
     summary = run_loading()
     logger.info(f"Loading complete: {summary}")
-
     kwargs["ti"].xcom_push(key="load_summary", value=summary)
     return summary
 
@@ -84,20 +80,19 @@ def task_quality_check(**kwargs):
     """
     Run comprehensive data quality checks after loading.
 
-    This task validates:
+    Validates:
     - Row counts are non-zero
     - No null foreign keys
     - Referential integrity between fact and dimensions
     - No negative monetary amounts
-    - No future dates in completed orders
     """
     from sqlalchemy import create_engine, text
     import os
 
     dw_conn = (
         f"{os.environ.get('DW_DRIVER', 'postgresql')}://"
-        f"{os.environ.get('DW_USER', 'warehouse_user')}:"
-        f"{os.environ.get('DW_PASSWORD', 'warehouse_pass')}@"
+        f"{os.environ.get('DW_USER', 'etl_user')}:"
+        f"{os.environ.get('DW_PASSWORD', 'etl_password')}@"
         f"{os.environ.get('DW_HOST', 'localhost')}:"
         f"{os.environ.get('DW_PORT', '5432')}/"
         f"{os.environ.get('DW_NAME', 'ecommerce_dw')}"
@@ -107,44 +102,49 @@ def task_quality_check(**kwargs):
     checks_failed = []
 
     with engine.connect() as conn:
-        # Check 1: sales_fact is not empty
-        row_count = conn.execute(text("SELECT COUNT(*) FROM sales_fact")).scalar()
+        # Check 1: fact_order_items is not empty
+        row_count = conn.execute(text("SELECT COUNT(*) FROM fact_order_items")).scalar()
         if row_count == 0:
-            checks_failed.append("sales_fact is EMPTY")
+            checks_failed.append("fact_order_items is EMPTY")
         else:
-            logger.info(f"CHECK PASS: sales_fact has {row_count} rows")
+            logger.info(f"CHECK PASS: fact_order_items has {row_count} rows")
 
-        # Check 2: No null customer keys
-        null_keys = conn.execute(
-            text("SELECT COUNT(*) FROM sales_fact WHERE customer_key IS NULL")
-        ).scalar()
+        # Check 2: No null required dimension keys
+        null_keys = conn.execute(text("""
+            SELECT COUNT(*)
+            FROM fact_order_items
+            WHERE customer_key IS NULL
+               OR date_key IS NULL
+               OR product_key IS NULL
+        """)).scalar()
         if null_keys > 0:
-            checks_failed.append(f"{null_keys} null customer_keys in sales_fact")
+            checks_failed.append(f"{null_keys} rows with null dimension keys")
         else:
-            logger.info("CHECK PASS: No null customer_keys")
+            logger.info("CHECK PASS: No null required dimension keys")
 
         # Check 3: No negative amounts
-        neg_amounts = conn.execute(
-            text("SELECT COUNT(*) FROM sales_fact WHERE net_amount < 0")
-        ).scalar()
+        neg_amounts = conn.execute(text(
+            "SELECT COUNT(*) FROM fact_order_items WHERE net_amount < 0"
+        )).scalar()
         if neg_amounts > 0:
-            checks_failed.append(f"{neg_amounts} negative net_amounts in sales_fact")
+            checks_failed.append(f"{neg_amounts} negative net_amounts")
         else:
             logger.info("CHECK PASS: No negative net_amounts")
 
         # Check 4: Date dimension completeness
         orphan_dates = conn.execute(text("""
-            SELECT COUNT(*) FROM sales_fact f
-            LEFT JOIN date_dim d ON f.date_key = d.date_key
+            SELECT COUNT(*) FROM fact_order_items f
+            LEFT JOIN dim_date d ON f.date_key = d.date_key
             WHERE d.date_key IS NULL
         """)).scalar()
         if orphan_dates > 0:
-            checks_failed.append(f"{orphan_dates} orphan date_keys in sales_fact")
+            checks_failed.append(f"{orphan_dates} orphan date_keys")
         else:
-            logger.info("CHECK PASS: All date_keys have matching date_dim rows")
+            logger.info("CHECK PASS: All date_keys exist in dim_date")
 
-        # Check 5: Dimension tables are not empty
-        for dim_table in ["customer_dim", "product_dim", "date_dim", "payment_dim"]:
+        # Check 5: All dimension tables are non-empty
+        for dim_table in ["dim_customer", "dim_product", "dim_date",
+                          "dim_payment_method", "dim_location"]:
             dim_count = conn.execute(text(f"SELECT COUNT(*) FROM {dim_table}")).scalar()
             if dim_count == 0:
                 checks_failed.append(f"{dim_table} is EMPTY")
@@ -167,15 +167,15 @@ def task_refresh_views(**kwargs):
 
     dw_conn = (
         f"{os.environ.get('DW_DRIVER', 'postgresql')}://"
-        f"{os.environ.get('DW_USER', 'warehouse_user')}:"
-        f"{os.environ.get('DW_PASSWORD', 'warehouse_pass')}@"
+        f"{os.environ.get('DW_USER', 'etl_user')}:"
+        f"{os.environ.get('DW_PASSWORD', 'etl_password')}@"
         f"{os.environ.get('DW_HOST', 'localhost')}:"
         f"{os.environ.get('DW_PORT', '5432')}/"
         f"{os.environ.get('DW_NAME', 'ecommerce_dw')}"
     )
     engine = create_engine(dw_conn)
 
-    views = ["mv_daily_sales_summary", "mv_product_performance"]
+    views = ["mv_daily_sales", "mv_product_performance", "mv_customer_summary"]
 
     with engine.begin() as conn:
         for view in views:
@@ -202,9 +202,7 @@ with DAG(
 ) as dag:
 
     # ── Pipeline Start ──
-    start = DummyOperator(
-        task_id="start_pipeline",
-    )
+    start = DummyOperator(task_id="start_pipeline")
 
     # ── Extract Phase ──
     extract_data = PythonOperator(
@@ -242,9 +240,7 @@ with DAG(
     )
 
     # ── Pipeline End ──
-    end_success = DummyOperator(
-        task_id="pipeline_success",
-    )
+    end_success = DummyOperator(task_id="pipeline_success")
 
     # ── Failure Notification ──
     notify_failure = EmailOperator(
@@ -262,9 +258,6 @@ with DAG(
     )
 
     # ── Task Dependencies ──
-    # Linear pipeline:  start → extract → transform → load → validate → refresh → end
     start >> extract_data >> transform_data >> load_to_warehouse
     load_to_warehouse >> quality_checks >> refresh_views >> end_success
-
-    # Failure notification triggers if any task fails
     [extract_data, transform_data, load_to_warehouse, quality_checks] >> notify_failure

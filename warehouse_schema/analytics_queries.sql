@@ -1,246 +1,177 @@
 -- ============================================================
 -- BUSINESS ANALYTICS QUERIES
 -- E-commerce Data Pipeline with Automated ETL
--- Run these against the data warehouse (star schema)
+-- Run against ecommerce_dw (star schema)
 -- ============================================================
 
 
--- ────────────────────────────────────────────
--- 1. TOTAL SALES PER DAY
--- Shows daily revenue trends with order counts
--- ────────────────────────────────────────────
+-- 1. DAILY SALES SUMMARY
 SELECT
     d.full_date,
     d.day_name,
-    COUNT(DISTINCT f.order_id)      AS total_orders,
-    SUM(f.quantity)                  AS total_items_sold,
-    SUM(f.total_amount)             AS gross_revenue,
-    SUM(f.discount_amount)          AS total_discounts,
-    SUM(f.net_amount)               AS net_revenue,
-    ROUND(AVG(f.net_amount), 2)     AS avg_order_value
-FROM sales_fact f
-JOIN date_dim d ON f.date_key = d.date_key
-WHERE d.year = 2025
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    SUM(f.quantity) AS total_items_sold,
+    SUM(f.line_total) AS gross_revenue,
+    SUM(f.net_amount) AS net_revenue,
+    SUM(f.gross_profit) AS gross_profit,
+    ROUND(AVG(f.net_amount), 2) AS avg_line_value,
+    COUNT(DISTINCT f.customer_key) AS unique_customers
+FROM fact_order_items f
+JOIN dim_date d ON f.date_key = d.date_key
+WHERE d.year = EXTRACT(YEAR FROM CURRENT_DATE)::INT
   AND f.order_status NOT IN ('cancelled', 'returned')
 GROUP BY d.full_date, d.day_name
 ORDER BY d.full_date DESC;
 
 
--- ────────────────────────────────────────────
--- 2. BEST SELLING PRODUCTS (TOP 10)
--- Identifies highest-revenue products
--- ────────────────────────────────────────────
+-- 2. MONTHLY REVENUE TREND WITH MoM GROWTH
 SELECT
-    p.product_name,
-    p.category,
-    p.brand,
-    SUM(f.quantity)                  AS total_units_sold,
-    SUM(f.net_amount)               AS total_revenue,
-    ROUND(AVG(f.unit_price), 2)     AS avg_selling_price,
-    p.profit_margin                  AS margin_pct
-FROM sales_fact f
-JOIN product_dim p ON f.product_key = p.product_key
+    d.year, d.month, d.month_name,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    SUM(f.net_amount) AS monthly_revenue,
+    SUM(f.gross_profit) AS monthly_profit,
+    LAG(SUM(f.net_amount)) OVER (ORDER BY d.year, d.month) AS prev_month_revenue,
+    ROUND(
+        (SUM(f.net_amount) - LAG(SUM(f.net_amount)) OVER (ORDER BY d.year, d.month))
+        / NULLIF(LAG(SUM(f.net_amount)) OVER (ORDER BY d.year, d.month), 0) * 100, 2
+    ) AS mom_growth_pct
+FROM fact_order_items f
+JOIN dim_date d ON f.date_key = d.date_key
+WHERE f.order_status NOT IN ('cancelled', 'returned')
+GROUP BY d.year, d.month, d.month_name
+ORDER BY d.year, d.month;
+
+
+-- 3. TOP 10 PRODUCTS BY REVENUE
+SELECT
+    p.product_name, p.category, p.brand,
+    SUM(f.quantity) AS total_units_sold,
+    SUM(f.net_amount) AS total_revenue,
+    SUM(f.gross_profit) AS total_profit,
+    p.profit_margin AS margin_pct
+FROM fact_order_items f
+JOIN dim_product p ON f.product_key = p.product_key
 WHERE f.order_status NOT IN ('cancelled', 'returned')
 GROUP BY p.product_name, p.category, p.brand, p.profit_margin
 ORDER BY total_revenue DESC
 LIMIT 10;
 
 
--- ────────────────────────────────────────────
--- 3. CUSTOMER LIFETIME VALUE (TOP 20)
--- Ranks customers by total spending
--- ────────────────────────────────────────────
+-- 4. CUSTOMER LIFETIME VALUE (TOP 20)
 SELECT
     c.customer_id,
-    c.first_name || ' ' || c.last_name   AS customer_name,
-    c.city,
-    c.segment,
-    COUNT(DISTINCT f.order_id)            AS total_orders,
-    SUM(f.net_amount)                     AS lifetime_value,
-    ROUND(AVG(f.net_amount), 2)           AS avg_order_value,
-    MIN(d.full_date)                      AS first_purchase,
-    MAX(d.full_date)                      AS last_purchase,
-    MAX(d.full_date) - MIN(d.full_date)   AS customer_tenure_days
-FROM sales_fact f
-JOIN customer_dim c ON f.customer_key = c.customer_key
-JOIN date_dim d ON f.date_key = d.date_key
+    c.first_name || ' ' || c.last_name AS customer_name,
+    c.city, c.segment,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    SUM(f.net_amount) AS lifetime_value,
+    ROUND(AVG(f.net_amount), 2) AS avg_line_value,
+    MIN(d.full_date) AS first_purchase,
+    MAX(d.full_date) AS last_purchase,
+    MAX(d.full_date) - MIN(d.full_date) AS tenure_days
+FROM fact_order_items f
+JOIN dim_customer c ON f.customer_key = c.customer_key
+JOIN dim_date d ON f.date_key = d.date_key
 WHERE f.order_status NOT IN ('cancelled', 'returned')
 GROUP BY c.customer_id, c.first_name, c.last_name, c.city, c.segment
 ORDER BY lifetime_value DESC
 LIMIT 20;
 
 
--- ────────────────────────────────────────────
--- 4. MONTHLY REVENUE TREND
--- Shows month-over-month growth
--- ────────────────────────────────────────────
-SELECT
-    d.year,
-    d.month,
-    d.month_name,
-    COUNT(DISTINCT f.order_id)          AS total_orders,
-    SUM(f.net_amount)                   AS monthly_revenue,
-    LAG(SUM(f.net_amount)) OVER (
-        ORDER BY d.year, d.month
-    )                                   AS prev_month_revenue,
-    ROUND(
-        (SUM(f.net_amount) - LAG(SUM(f.net_amount)) OVER (ORDER BY d.year, d.month))
-        / NULLIF(LAG(SUM(f.net_amount)) OVER (ORDER BY d.year, d.month), 0) * 100,
-        2
-    )                                   AS mom_growth_pct
-FROM sales_fact f
-JOIN date_dim d ON f.date_key = d.date_key
-WHERE f.order_status NOT IN ('cancelled', 'returned')
-GROUP BY d.year, d.month, d.month_name
-ORDER BY d.year, d.month;
-
-
--- ────────────────────────────────────────────
--- 5. PAYMENT METHOD ANALYSIS
--- Shows most popular payment methods
--- ────────────────────────────────────────────
-SELECT
-    pm.payment_method,
-    COUNT(f.order_id)                     AS transaction_count,
-    SUM(f.net_amount)                     AS total_revenue,
-    ROUND(AVG(f.net_amount), 2)           AS avg_transaction_value,
-    ROUND(
-        COUNT(f.order_id) * 100.0 / SUM(COUNT(f.order_id)) OVER(), 2
-    )                                     AS percentage_share
-FROM sales_fact f
-JOIN payment_dim pm ON f.payment_key = pm.payment_key
-WHERE f.order_status NOT IN ('cancelled', 'returned')
-GROUP BY pm.payment_method
-ORDER BY total_revenue DESC;
-
-
--- ────────────────────────────────────────────
--- 6. SALES BY PRODUCT CATEGORY
--- Category-level revenue breakdown
--- ────────────────────────────────────────────
-SELECT
-    p.category,
-    COUNT(DISTINCT p.product_id)          AS product_count,
-    COUNT(DISTINCT f.order_id)            AS total_orders,
-    SUM(f.quantity)                        AS total_units_sold,
-    SUM(f.net_amount)                     AS total_revenue,
-    ROUND(AVG(p.profit_margin), 2)        AS avg_margin_pct,
-    ROUND(
-        SUM(f.net_amount) * 100.0 / SUM(SUM(f.net_amount)) OVER(), 2
-    )                                     AS revenue_share_pct
-FROM sales_fact f
-JOIN product_dim p ON f.product_key = p.product_key
-WHERE f.order_status NOT IN ('cancelled', 'returned')
-GROUP BY p.category
-ORDER BY total_revenue DESC;
-
-
--- ────────────────────────────────────────────
--- 7. CUSTOMER SEGMENTATION ANALYSIS
--- Breakdown by customer segment
--- ────────────────────────────────────────────
+-- 5. CUSTOMER SEGMENTATION ANALYSIS
 SELECT
     c.segment,
-    COUNT(DISTINCT c.customer_id)         AS customer_count,
-    COUNT(DISTINCT f.order_id)            AS total_orders,
-    SUM(f.net_amount)                     AS total_revenue,
-    ROUND(AVG(f.net_amount), 2)           AS avg_order_value,
-    ROUND(
-        SUM(f.net_amount) / COUNT(DISTINCT c.customer_id), 2
-    )                                     AS revenue_per_customer
-FROM sales_fact f
-JOIN customer_dim c ON f.customer_key = c.customer_key
+    COUNT(DISTINCT c.customer_key) AS customer_count,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    SUM(f.net_amount) AS total_revenue,
+    SUM(f.gross_profit) AS total_profit,
+    ROUND(AVG(f.net_amount), 2) AS avg_line_value,
+    ROUND(SUM(f.net_amount) / NULLIF(COUNT(DISTINCT c.customer_key), 0), 2) AS revenue_per_customer
+FROM fact_order_items f
+JOIN dim_customer c ON f.customer_key = c.customer_key
 WHERE f.order_status NOT IN ('cancelled', 'returned')
 GROUP BY c.segment
 ORDER BY total_revenue DESC;
 
 
--- ────────────────────────────────────────────
--- 8. WEEKEND vs WEEKDAY SALES
--- Compare performance by day type
--- ────────────────────────────────────────────
+-- 6. CATEGORY PERFORMANCE
+SELECT
+    p.category,
+    COUNT(DISTINCT p.product_key) AS product_count,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    SUM(f.quantity) AS total_units_sold,
+    SUM(f.net_amount) AS total_revenue,
+    SUM(f.gross_profit) AS total_profit,
+    ROUND(AVG(p.profit_margin), 2) AS avg_margin_pct,
+    ROUND(SUM(f.net_amount) * 100.0 / SUM(SUM(f.net_amount)) OVER (), 2) AS revenue_share_pct
+FROM fact_order_items f
+JOIN dim_product p ON f.product_key = p.product_key
+WHERE f.order_status NOT IN ('cancelled', 'returned')
+GROUP BY p.category
+ORDER BY total_revenue DESC;
+
+
+-- 7. PAYMENT METHOD ANALYSIS
+SELECT
+    pm.display_name AS payment_method,
+    pm.method_type,
+    COUNT(DISTINCT f.order_id) AS transaction_count,
+    SUM(f.net_amount) AS total_revenue,
+    ROUND(AVG(f.net_amount), 2) AS avg_transaction_value,
+    ROUND(COUNT(DISTINCT f.order_id) * 100.0 / SUM(COUNT(DISTINCT f.order_id)) OVER (), 2) AS pct_share
+FROM fact_order_items f
+JOIN dim_payment_method pm ON f.payment_method_key = pm.payment_method_key
+WHERE f.order_status NOT IN ('cancelled', 'returned')
+GROUP BY pm.display_name, pm.method_type
+ORDER BY total_revenue DESC;
+
+
+-- 8. GEOGRAPHIC SALES ANALYSIS
+SELECT
+    l.region, l.state, l.city, l.tier,
+    COUNT(DISTINCT c.customer_key) AS customer_count,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    SUM(f.net_amount) AS total_revenue,
+    ROUND(AVG(f.net_amount), 2) AS avg_line_value
+FROM fact_order_items f
+JOIN dim_customer c ON f.customer_key = c.customer_key
+JOIN dim_location l ON f.location_key = l.location_key
+WHERE f.order_status NOT IN ('cancelled', 'returned')
+GROUP BY l.region, l.state, l.city, l.tier
+ORDER BY total_revenue DESC
+LIMIT 20;
+
+
+-- 9. WEEKEND vs WEEKDAY SALES
 SELECT
     CASE WHEN d.is_weekend THEN 'Weekend' ELSE 'Weekday' END AS day_type,
-    COUNT(DISTINCT f.order_id)            AS total_orders,
-    SUM(f.net_amount)                     AS total_revenue,
-    ROUND(AVG(f.net_amount), 2)           AS avg_order_value,
-    ROUND(
-        COUNT(DISTINCT f.order_id) * 1.0 / COUNT(DISTINCT d.full_date), 2
-    )                                     AS avg_orders_per_day
-FROM sales_fact f
-JOIN date_dim d ON f.date_key = d.date_key
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    SUM(f.net_amount) AS total_revenue,
+    SUM(f.gross_profit) AS total_profit,
+    ROUND(AVG(f.net_amount), 2) AS avg_line_value
+FROM fact_order_items f
+JOIN dim_date d ON f.date_key = d.date_key
 WHERE f.order_status NOT IN ('cancelled', 'returned')
-  AND d.year = 2025
 GROUP BY CASE WHEN d.is_weekend THEN 'Weekend' ELSE 'Weekday' END;
 
 
--- ────────────────────────────────────────────
--- 9. ORDER STATUS DISTRIBUTION
--- Funnel analysis of order completion
--- ────────────────────────────────────────────
+-- 10. ORDER STATUS DISTRIBUTION
 SELECT
     f.order_status,
-    COUNT(f.order_id)                     AS order_count,
-    SUM(f.total_amount)                   AS total_value,
-    ROUND(
-        COUNT(f.order_id) * 100.0 / SUM(COUNT(f.order_id)) OVER(), 2
-    )                                     AS percentage
-FROM sales_fact f
+    COUNT(DISTINCT f.order_id) AS order_count,
+    SUM(f.line_total) AS total_value,
+    ROUND(COUNT(DISTINCT f.order_id) * 100.0
+          / SUM(COUNT(DISTINCT f.order_id)) OVER (), 2) AS percentage
+FROM fact_order_items f
 GROUP BY f.order_status
 ORDER BY order_count DESC;
 
 
--- ────────────────────────────────────────────
--- 10. GEOGRAPHIC SALES ANALYSIS
--- Revenue breakdown by city and state
--- ────────────────────────────────────────────
-SELECT
-    c.state,
-    c.city,
-    COUNT(DISTINCT c.customer_id)         AS customer_count,
-    COUNT(DISTINCT f.order_id)            AS total_orders,
-    SUM(f.net_amount)                     AS total_revenue,
-    ROUND(AVG(f.net_amount), 2)           AS avg_order_value
-FROM sales_fact f
-JOIN customer_dim c ON f.customer_key = c.customer_key
-WHERE f.order_status NOT IN ('cancelled', 'returned')
-GROUP BY c.state, c.city
-ORDER BY total_revenue DESC
-LIMIT 15;
-
-
--- ────────────────────────────────────────────
--- 11. QUARTERLY PERFORMANCE SUMMARY
--- High-level quarterly KPIs
--- ────────────────────────────────────────────
-SELECT
-    d.year,
-    d.quarter,
-    'Q' || d.quarter || ' ' || d.year     AS quarter_label,
-    COUNT(DISTINCT f.order_id)            AS total_orders,
-    COUNT(DISTINCT f.customer_key)        AS unique_customers,
-    SUM(f.net_amount)                     AS quarterly_revenue,
-    SUM(f.discount_amount)               AS total_discounts,
-    ROUND(AVG(f.net_amount), 2)          AS avg_order_value,
-    ROUND(
-        SUM(f.discount_amount) / NULLIF(SUM(f.total_amount), 0) * 100, 2
-    )                                     AS discount_rate_pct
-FROM sales_fact f
-JOIN date_dim d ON f.date_key = d.date_key
-WHERE f.order_status NOT IN ('cancelled', 'returned')
-GROUP BY d.year, d.quarter
-ORDER BY d.year, d.quarter;
-
-
--- ────────────────────────────────────────────
--- 12. REPEAT CUSTOMER RATE
--- Identify returning customers
--- ────────────────────────────────────────────
+-- 11. REPEAT CUSTOMER RATE
 WITH customer_orders AS (
     SELECT
         customer_key,
         COUNT(DISTINCT order_id) AS order_count
-    FROM sales_fact
+    FROM fact_order_items
     WHERE order_status NOT IN ('cancelled', 'returned')
     GROUP BY customer_key
 )
@@ -251,10 +182,8 @@ SELECT
         WHEN order_count BETWEEN 4 AND 10 THEN 'Loyal (4-10)'
         ELSE 'VIP (10+)'
     END AS customer_type,
-    COUNT(*)                               AS customer_count,
-    ROUND(
-        COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2
-    )                                      AS percentage
+    COUNT(*) AS customer_count,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS percentage
 FROM customer_orders
 GROUP BY
     CASE
@@ -264,3 +193,19 @@ GROUP BY
         ELSE 'VIP (10+)'
     END
 ORDER BY customer_count DESC;
+
+
+-- 12. QUARTERLY PERFORMANCE
+SELECT
+    d.year, d.quarter,
+    'Q' || d.quarter || ' ' || d.year AS quarter_label,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    COUNT(DISTINCT f.customer_key) AS unique_customers,
+    SUM(f.net_amount) AS quarterly_revenue,
+    SUM(f.gross_profit) AS quarterly_profit,
+    ROUND(AVG(f.net_amount), 2) AS avg_line_value
+FROM fact_order_items f
+JOIN dim_date d ON f.date_key = d.date_key
+WHERE f.order_status NOT IN ('cancelled', 'returned')
+GROUP BY d.year, d.quarter
+ORDER BY d.year, d.quarter;

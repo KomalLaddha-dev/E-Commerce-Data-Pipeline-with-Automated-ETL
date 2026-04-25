@@ -96,10 +96,10 @@ and category-level trends for merchandising decisions.
 
 | KPI | SQL Metric | Format |
 |-----|-----------|--------|
-| Active Products | `COUNT(*)` where `is_active = true` | Number |
+| Active Products | `COUNT(*)` from `product_dim` | Number |
 | Avg Profit Margin | `AVG(profit_margin)` | Percentage |
 | Low Stock Items | Products with `stock_quantity <= 50` | Number |
-| Avg Selling Price | `AVG(unit_price)` from fact | Currency (INR) |
+| Avg Selling Price | `AVG(net_amount / total_items)` from fact | Currency (INR) |
 
 ### Charts
 
@@ -176,10 +176,10 @@ Select all star schema tables:
 
 ### Step 3: Define Relationships
 ```
-sales_fact.customer_key  →  customer_dim.customer_key  (Many-to-One)
-sales_fact.product_key   →  product_dim.product_key    (Many-to-One)
+sales_fact.customer_id   →  customer_dim.customer_id   (Many-to-One)
+sales_fact.product_id    →  product_dim.product_id     (Many-to-One)
 sales_fact.date_key      →  date_dim.date_key          (Many-to-One)
-sales_fact.payment_key   →  payment_dim.payment_key    (Many-to-One)
+sales_fact.payment_id    →  payment_dim.payment_id     (Many-to-One)
 ```
 
 ### Step 4: Create Measures (DAX)
@@ -200,7 +200,7 @@ VAR PrevMonth = CALCULATE([Total Revenue], DATEADD(date_dim[full_date], -1, MONT
 RETURN DIVIDE(CurrentMonth - PrevMonth, PrevMonth, 0)
 
 // Customer Lifetime Value
-CLV = DIVIDE(SUM(sales_fact[net_amount]), DISTINCTCOUNT(sales_fact[customer_key]), 0)
+CLV = DIVIDE(SUM(sales_fact[net_amount]), DISTINCTCOUNT(sales_fact[customer_id]), 0)
 ```
 
 ---
@@ -221,10 +221,10 @@ CLV = DIVIDE(SUM(sales_fact[net_amount]), DISTINCTCOUNT(sales_fact[customer_key]
 ```
 Drag sales_fact to canvas as the central table.
 Join dimension tables:
-  sales_fact ← Inner Join → customer_dim  (ON customer_key)
-  sales_fact ← Inner Join → product_dim   (ON product_key)
+  sales_fact ← Inner Join → customer_dim  (ON customer_id)
+  sales_fact ← Inner Join → product_dim   (ON product_id)
   sales_fact ← Inner Join → date_dim      (ON date_key)
-  sales_fact ← Inner Join → payment_dim   (ON payment_key)
+  sales_fact ← Inner Join → payment_dim   (ON payment_id)
 ```
 
 ### Step 3: Create Calculated Fields

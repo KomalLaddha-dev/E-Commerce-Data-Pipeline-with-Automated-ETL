@@ -846,56 +846,35 @@ The **Star Schema** is the industry standard for analytical data warehouses beca
 3. **BI Tool Compatibility** — Power BI, Tableau, and Looker are optimized for star schemas
 4. **Aggregation Speed** — Pre-joined fact tables accelerate GROUP BY operations
 
-## 5.2 Star Schema Diagram
+## 5.2 Warehouse Cluster Diagram
 
 ```
-                       ┌─────────────────┐
-                       │  Customer_Dim   │
-                       │─────────────────│
-                       │ customer_key PK │
-                       │ customer_id     │
-                       │ first_name      │
-                       │ last_name       │
-                       │ email           │
-                       │ city            │
-                       │ state           │
-                       │ country         │
-                       │ segment         │
-                       └────────┬────────┘
-                                │
-┌─────────────────┐    ┌───────┴─────────────┐    ┌─────────────────┐
-│   Product_Dim   │    │     Sales_Fact      │    │   Payment_Dim   │
-│─────────────────│    │─────────────────────│    │─────────────────│
-│ product_key PK  │    │ sale_id PK          │    │ payment_key PK  │
-│ product_id      │◄───│ product_key FK      │    │ payment_method  │
-│ product_name    │    │ customer_key FK ────│───►│ payment_status  │
-│ category        │    │ date_key FK         │    │ gateway         │
-│ sub_category    │    │ payment_key FK ─────│───►│                 │
-│ brand           │    │                     │    └─────────────────┘
-│ price           │    │ order_id            │
-│ cost_price      │    │ quantity            │
-│ profit_margin   │    │ unit_price          │
-└─────────────────┘    │ total_amount        │
-                       │ discount_amount     │
-                       │ shipping_cost       │
-                       │ net_amount          │
-                       │ order_status        │
-                       └───────┬─────────────┘
+                     ┌───────────────────┐
+                     │   customer_dim    │
+                     │───────────────────│
+                     │ customer_id (PK)  │
+                     │ city/state/segment│
+                     └─────────┬─────────┘
                                │
-                       ┌───────┴─────────┐
-                       │    Date_Dim     │
-                       │─────────────────│
-                       │ date_key PK     │
-                       │ full_date       │
-                       │ day             │
-                       │ month           │
-                       │ month_name      │
-                       │ quarter         │
-                       │ year            │
-                       │ day_of_week     │
-                       │ day_name        │
-                       │ is_weekend      │
-                       └─────────────────┘
+┌───────────────────┐   ┌──────▼─────────────────────┐   ┌───────────────────┐
+│    product_dim    │   │         sales_fact         │   │    payment_dim    │
+│───────────────────│   │────────────────────────────│   │───────────────────│
+│ product_id (PK)   │◄──│ product_id   (FK)          │──►│ payment_id (PK)   │
+│ category/brand    │   │ customer_id  (FK)          │   │ payment_method    │
+│ price/cost/margin │   │ date_key     (FK)          │   │ payment_status    │
+└───────────────────┘   │ payment_id   (FK)          │   │ amount            │
+                        │ order_id     (PK)          │   └───────────────────┘
+                        │ total_items, net_amount    │
+                        │ total_amount, discount, ...│
+                        └──────────┬─────────────────┘
+                                   │
+                           ┌───────▼────────┐
+                           │    date_dim    │
+                           │────────────────│
+                           │ date_key (PK)  │
+                           │ full_date, year│
+                           │ month, quarter │
+                           └────────────────┘
 ```
 
 ## 5.3 Table Schemas
@@ -904,19 +883,18 @@ The **Star Schema** is the industry standard for analytical data warehouses beca
 
 ```sql
 CREATE TABLE sales_fact (
-    sale_id         SERIAL PRIMARY KEY,
-    order_id        INT NOT NULL UNIQUE,
-    customer_key    INT REFERENCES customer_dim(customer_key),
-    product_key     INT REFERENCES product_dim(product_key),
-    date_key        INT REFERENCES date_dim(date_key),
-    payment_key     INT REFERENCES payment_dim(payment_key),
-    quantity        INT,
-    unit_price      DECIMAL(10, 2),
-    total_amount    DECIMAL(12, 2),
-    discount_amount DECIMAL(10, 2) DEFAULT 0,
-    shipping_cost   DECIMAL(10, 2) DEFAULT 0,
-    net_amount      DECIMAL(12, 2),
-    order_status    VARCHAR(50)
+    order_id         INT PRIMARY KEY,
+    customer_id      INT REFERENCES customer_dim(customer_id),
+    product_id       INT REFERENCES product_dim(product_id),
+    date_key         INT REFERENCES date_dim(date_key),
+    payment_id       INT REFERENCES payment_dim(payment_id),
+    order_status     VARCHAR(50),
+    total_amount     DECIMAL(12, 2),
+    discount_amount  DECIMAL(10, 2) DEFAULT 0,
+    shipping_cost    DECIMAL(10, 2) DEFAULT 0,
+    net_amount       DECIMAL(12, 2),
+    total_items      INT DEFAULT 1,
+    payment_method   VARCHAR(50)
 );
 ```
 
@@ -924,18 +902,17 @@ CREATE TABLE sales_fact (
 
 ```sql
 CREATE TABLE customer_dim (
-    customer_key    SERIAL PRIMARY KEY,
-    customer_id     INT UNIQUE NOT NULL,
-    first_name      VARCHAR(100),
-    last_name       VARCHAR(100),
-    email           VARCHAR(255),
-    phone           VARCHAR(20),
-    city            VARCHAR(100),
-    state           VARCHAR(100),
-    country         VARCHAR(100),
-    segment         VARCHAR(50),   -- 'Premium', 'Regular', 'New'
-    registration_date DATE,
-    is_active       BOOLEAN DEFAULT TRUE
+    customer_id        INT PRIMARY KEY,
+    first_name         VARCHAR(100),
+    last_name          VARCHAR(100),
+    email              VARCHAR(255),
+    phone              VARCHAR(20),
+    city               VARCHAR(100),
+    state              VARCHAR(100),
+    country            VARCHAR(100),
+    segment            VARCHAR(50),
+    registration_date  TIMESTAMP,
+    is_active          BOOLEAN
 );
 ```
 
@@ -943,16 +920,15 @@ CREATE TABLE customer_dim (
 
 ```sql
 CREATE TABLE product_dim (
-    product_key     SERIAL PRIMARY KEY,
-    product_id      INT UNIQUE NOT NULL,
+    product_id      INT PRIMARY KEY,
     product_name    VARCHAR(255),
     category        VARCHAR(100),
     sub_category    VARCHAR(100),
     brand           VARCHAR(100),
     price           DECIMAL(10, 2),
     cost_price      DECIMAL(10, 2),
-    profit_margin   DECIMAL(5, 2),
-    is_active       BOOLEAN DEFAULT TRUE
+    stock_quantity  INT,
+    profit_margin   DECIMAL(5, 2)
 );
 ```
 
@@ -960,17 +936,18 @@ CREATE TABLE product_dim (
 
 ```sql
 CREATE TABLE date_dim (
-    date_key        INT PRIMARY KEY,      -- YYYYMMDD format
-    full_date       DATE NOT NULL,
-    day             INT,
-    month           INT,
-    year            INT,
-    quarter         INT,
-    day_of_week     INT,                  -- 0=Monday, 6=Sunday
+    date_key        INT PRIMARY KEY,
+    full_date       DATE,
+    day             SMALLINT,
+    month           SMALLINT,
+    year            SMALLINT,
+    quarter         SMALLINT,
+    day_of_week     SMALLINT,
     day_name        VARCHAR(10),
     month_name      VARCHAR(10),
     is_weekend      BOOLEAN,
-    fiscal_year     INT
+    fiscal_year     SMALLINT,
+    week_of_year    SMALLINT
 );
 ```
 
@@ -978,12 +955,13 @@ CREATE TABLE date_dim (
 
 ```sql
 CREATE TABLE payment_dim (
-    payment_key     SERIAL PRIMARY KEY,
-    payment_id      INT UNIQUE,
+    payment_id      INT PRIMARY KEY,
+    order_id        INT,
+    payment_date    TIMESTAMP,
     payment_method  VARCHAR(50),
     payment_status  VARCHAR(50),
-    transaction_id  VARCHAR(255),
-    gateway         VARCHAR(100)
+    amount          DECIMAL(12, 2),
+    transaction_id  VARCHAR(255)
 );
 ```
 
@@ -1115,12 +1093,12 @@ with DAG(
             if result == 0:
                 raise ValueError("Quality Check FAILED: sales_fact is empty!")
 
-            # Check: no null customer_keys in fact table
+            # Check: no null customer_ids in fact table
             nulls = conn.execute(
-                text("SELECT COUNT(*) FROM sales_fact WHERE customer_key IS NULL")
+                text("SELECT COUNT(*) FROM sales_fact WHERE customer_id IS NULL")
             ).scalar()
             if nulls > 0:
-                raise ValueError(f"Quality Check FAILED: {nulls} null customer_keys!")
+                raise ValueError(f"Quality Check FAILED: {nulls} null customer_ids!")
 
         print(f"Quality checks passed. sales_fact has {result} rows.")
 
@@ -1187,7 +1165,7 @@ SELECT
     d.full_date,
     d.day_name,
     COUNT(DISTINCT f.order_id)  AS total_orders,
-    SUM(f.quantity)             AS total_items_sold,
+    SUM(f.total_items)             AS total_items_sold,
     SUM(f.total_amount)        AS gross_revenue,
     SUM(f.discount_amount)     AS total_discounts,
     SUM(f.net_amount)          AS net_revenue
@@ -1205,11 +1183,11 @@ SELECT
     p.product_name,
     p.category,
     p.brand,
-    SUM(f.quantity)          AS total_units_sold,
+    SUM(f.total_items)          AS total_units_sold,
     SUM(f.net_amount)        AS total_revenue,
-    ROUND(AVG(f.unit_price), 2) AS avg_selling_price
+    ROUND(AVG(f.net_amount / NULLIF(f.total_items, 0)), 2) AS avg_selling_price
 FROM sales_fact f
-JOIN product_dim p ON f.product_key = p.product_key
+JOIN product_dim p ON f.product_id = p.product_id
 GROUP BY p.product_name, p.category, p.brand
 ORDER BY total_revenue DESC
 LIMIT 10;
@@ -1229,7 +1207,7 @@ SELECT
     MAX(d.full_date)                     AS last_purchase,
     MAX(d.full_date) - MIN(d.full_date)  AS customer_tenure_days
 FROM sales_fact f
-JOIN customer_dim c ON f.customer_key = c.customer_key
+JOIN customer_dim c ON f.customer_id = c.customer_id
 JOIN date_dim d ON f.date_key = d.date_key
 GROUP BY c.customer_id, c.first_name, c.last_name, c.segment
 ORDER BY lifetime_value DESC
@@ -1270,7 +1248,7 @@ SELECT
         2
     ) AS percentage_share
 FROM sales_fact f
-JOIN payment_dim pm ON f.payment_key = pm.payment_key
+JOIN payment_dim pm ON f.payment_id = pm.payment_id
 GROUP BY pm.payment_method
 ORDER BY total_revenue DESC;
 ```
@@ -1298,12 +1276,12 @@ JOIN (
     FROM products
 ) remaining ON p.product_id = remaining.product_id
 LEFT JOIN (
-    SELECT product_key, SUM(quantity) AS total_sold_30d
+    SELECT product_id, SUM(quantity) AS total_sold_30d
     FROM sales_fact f
     JOIN date_dim d ON f.date_key = d.date_key
     WHERE d.full_date >= CURRENT_DATE - INTERVAL '30 days'
-    GROUP BY product_key
-) sold ON p.product_key = sold.product_key
+    GROUP BY product_id
+) sold ON p.product_id = sold.product_id
 WHERE remaining.stock_quantity <= 50
 ORDER BY remaining.stock_quantity ASC;
 ```
@@ -1545,7 +1523,7 @@ GRANT SELECT ON sales_fact, customer_dim, product_dim, date_dim, payment_dim TO 
 -- Mask sensitive data for analysts
 CREATE VIEW customer_dim_masked AS
 SELECT
-    customer_key,
+    customer_id,
     customer_id,
     first_name,
     LEFT(last_name, 1) || '***'  AS last_name,
@@ -1595,8 +1573,8 @@ def run_data_quality_checks(engine):
         # Check 2: Referential integrity
         orphan_customers = conn.execute(text("""
             SELECT COUNT(*) FROM sales_fact f
-            LEFT JOIN customer_dim c ON f.customer_key = c.customer_key
-            WHERE c.customer_key IS NULL
+            LEFT JOIN customer_dim c ON f.customer_id = c.customer_id
+            WHERE c.customer_id IS NULL
         """)).scalar()
         checks.append(("Orphan customer keys", orphan_customers == 0))
 
@@ -1866,3 +1844,4 @@ operating an automated ETL pipeline for e-commerce analytics. The architecture, 
 practices described herein reflect industry standards used by leading technology companies.*
 
 ---
+
